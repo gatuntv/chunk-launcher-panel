@@ -15,6 +15,23 @@ const PORT = process.env.PORT || 4000;
 // https para el dominio de Railway.
 app.set('trust proxy', 1);
 
+// Cinturón y tirantes: si por lo que sea 'trust proxy' no alcanza a corregir
+// req.protocol (ej. quedó un deploy viejo corriendo, o Railway cambia cómo
+// proxea), esto fuerza la URL pública correcta sin depender de eso.
+// Configurable por variable de entorno en Railway (Settings → Variables);
+// si no se define, cae en el dominio público del panel.
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://chunk-launcher-panel-production.up.railway.app').replace(/\/$/, '');
+
+function getBaseUrl(req) {
+  // En local (sin dominio público configurado ni proxy) seguimos respetando
+  // el host real, para no romper el desarrollo con localhost:4000.
+  const host = req.get('host') || '';
+  if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
+    return `${req.protocol}://${host}`;
+  }
+  return PUBLIC_BASE_URL;
+}
+
 const DATA_FILE = path.join(__dirname, 'data', 'instances.json');
 // OJO: antes esto apuntaba a /app/uploads, pero Railway solo permite UN
 // volumen por servicio — el que ya montamos en /app/data. Así que las
@@ -118,7 +135,7 @@ app.post(
   (req, res) => {
     const { name, description, tag } = req.body;
     let { version, loader } = req.body;
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = getBaseUrl(req);
 
     const icon = req.files.icon?.[0];
     const background = req.files.background?.[0];
