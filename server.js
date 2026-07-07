@@ -65,7 +65,7 @@ function writeInstances(data) {
 // como si fuera un mod y se tiraba en mods/, incluso lo que no lo era).
 const EXCLUDED_PATH_PREFIXES = ['saves/', 'resourcepacks/'];
 
-function parseMrpack(buffer) {
+function parseMrpack(buffer, instanceId, baseUrl) {
   const zip = new AdmZip(buffer);
   const entry = zip.getEntry('modrinth.index.json');
   if (!entry) throw new Error('El archivo .mrpack no tiene un modrinth.index.json válido');
@@ -95,7 +95,59 @@ function parseMrpack(buffer) {
       path: f.path.replace(/\\/g, '/').includes('/') ? f.path.replace(/\\/g, '/') : `mods/${f.path}`
     }));
 
-  return { version, loader, mods };
+  // El índice (index.files) solo lista lo que Modrinth aloja en su propio CDN.
+  // Mods propios o privados (los tuyos, que no están subidos a Modrinth) y
+  // configs no van ahí — Modrinth los empaqueta tal cual, como archivos
+  // reales, dentro de las carpetas overrides/ (para todos) y
+  // client-overrides/ (solo cliente, pisa lo de overrides/ si hay el mismo
+  // archivo en las dos). Antes esto se ignoraba del todo: cualquier mod
+  // tuyo que no fuera de Modrinth desaparecía en silencio al importar el pack.
+  const bundled = new Map(); // ruta relativa -> entrada del zip
+
+  // Algunas herramientas arman el .mrpack con los mods/config sueltos al
+  // mismo nivel que modrinth.index.json (ej. "mods/foo.jar" directo, sin
+  // "overrides/" adelante), en vez de seguir la convención formal. Los
+  // tomamos como prioridad más baja: si el mismo archivo también aparece
+  // dentro de overrides/ o client-overrides/, esas carpetas ganan.
+  zip.getEntries().forEach((e) => {
+    if (e.isDirectory) return;
+    const normalized = e.entryName.replace(/\\/g, '/');
+    if (normalized === 'modrinth.index.json') return;
+    if (normalized.startsWith('overrides/') || normalized.startsWith('client-overrides/') || normalized.startsWith('server-overrides/')) return;
+    const lower = normalized.toLowerCase();
+    if (EXCLUDED_PATH_PREFIXES.some(p => lower.startsWith(p))) return;
+    bundled.set(normalized, e);
+  });
+
+  const collectOverrides = (prefix) => {
+    zip.getEntries().forEach((e) => {
+      if (e.isDirectory) return;
+      const normalized = e.entryName.replace(/\\/g, '/');
+      if (!normalized.startsWith(prefix)) return;
+      const relative = normalized.slice(prefix.length);
+      if (!relative) return;
+      const lower = relative.toLowerCase();
+      if (EXCLUDED_PATH_PREFIXES.some(p => lower.startsWith(p))) return;
+      bundled.set(relative, e);
+    });
+  };
+  collectOverrides('overrides/');
+  collectOverrides('client-overrides/'); // se procesa después, así pisa a overrides/ si coinciden
+
+  const instanceFilesDir = path.join(UPLOADS_DIR, 'instances', instanceId);
+  const bundledMods = [];
+  for (const [relative, zipEntry] of bundled) {
+    const dest = path.join(instanceFilesDir, relative);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.writeFileSync(dest, zipEntry.getData());
+    bundledMods.push({
+      fileName: path.basename(relative),
+      url: `${baseUrl}/uploads/instances/${instanceId}/${relative}`,
+      path: relative
+    });
+  }
+
+  return { version, loader, mods: [...mods, ...bundledMods] };
 }
 
 app.use(express.json());
@@ -136,6 +188,7 @@ app.post(
     const { name, description, tag } = req.body;
     let { version, loader } = req.body;
     const baseUrl = getBaseUrl(req);
+    const instanceId = randomUUID();
 
     const icon = req.files.icon?.[0];
     const background = req.files.background?.[0];
@@ -152,7 +205,7 @@ app.post(
     // (así no hay que tipear nada a mano ni subir cada .jar por separado).
     if (mrpackFile) {
       try {
-        const parsed = parseMrpack(fs.readFileSync(mrpackFile.path));
+        const parsed = parseMrpack(fs.readFileSync(mrpackFile.path), instanceId, baseUrl);
         version = parsed.version || version;
         loader = parsed.loader || loader;
         mods = [...mods, ...parsed.mods];
@@ -168,7 +221,7 @@ app.post(
     }
 
     const instance = {
-      id: randomUUID(),
+      id: instanceId,
       name,
       description,
       tag: tag || 'SERVIDOR PÚBLICO',
@@ -192,6 +245,10 @@ app.post(
 app.delete('/api/admin/instances/:id', (req, res) => {
   const instances = readInstances().filter(i => i.id !== req.params.id);
   writeInstances(instances);
+
+  const instanceFilesDir = path.join(UPLOADS_DIR, 'instances', req.params.id);
+  fs.rm(instanceFilesDir, { recursive: true, force: true }, () => {});
+
   res.json({ success: true });
 });
 
