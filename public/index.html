@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Panel · Eufonia</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="header">
+    <img src="logo.png" class="logo" alt="logo" />
+    <h1>Panel de instancias</h1>
+  </header>
+
+  <main class="layout">
+    <section class="form-card">
+      <h2>Nueva instancia</h2>
+      <form id="instanceForm">
+        <label>Nombre
+          <input type="text" name="name" required placeholder="Eufonia Club" />
+        </label>
+
+        <label>Descripción
+          <textarea name="description" rows="3" placeholder="Servidor público de survival…"></textarea>
+        </label>
+
+        <label>Etiqueta superior
+          <input type="text" name="tag" placeholder="SERVIDOR PÚBLICO" />
+        </label>
+
+        <label>Modpack de Modrinth (.mrpack) — opcional
+          <input type="file" name="mrpack" accept=".mrpack" id="mrpackInput" />
+        </label>
+        <p class="hint" id="mrpackHint">Si subís un .mrpack, la versión, el loader y los mods se completan solos.</p>
+
+        <div class="row">
+          <label>Versión
+            <input type="text" name="version" id="versionInput" placeholder="1.21.1" required />
+          </label>
+          <label>Loader
+            <select name="loader" id="loaderInput">
+              <option value="vanilla">Vanilla</option>
+              <option value="forge">Forge</option>
+              <option value="fabric">Fabric</option>
+              <option value="quilt">Quilt</option>
+            </select>
+          </label>
+        </div>
+
+        <label>Ícono (barra lateral)
+          <input type="file" name="icon" accept="image/*" required />
+        </label>
+
+        <label>Fondo de la instancia
+          <input type="file" name="background" accept="image/*" />
+        </label>
+
+        <label>Mods (.jar, puedes seleccionar varios)
+          <input type="file" name="mods" accept=".jar" multiple />
+        </label>
+
+        <button type="submit">Publicar instancia</button>
+      </form>
+    </section>
+
+    <section class="list-card">
+      <h2>Instancias publicadas</h2>
+      <div id="instanceGrid" class="instance-grid"></div>
+    </section>
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>
