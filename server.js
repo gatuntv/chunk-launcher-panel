@@ -152,7 +152,14 @@ function parseMrpack(buffer, instanceId, baseUrl) {
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(UPLOADS_DIR));
+// Por defecto Express bloquea servir cualquier archivo/carpeta que empiece
+// con punto (dotfiles: 'ignore'), pensado para no exponer sin querer cosas
+// como .env o .git. Pero algunos mods (ej. Axiom) guardan sus propios
+// backups de config así (".axiom.json.backup"), y esos SÍ los queremos
+// distribuir con el pack — sin esto, el panel los extrae bien pero después
+// se niega a servirlos (404 silencioso), y el launcher lo reporta como que
+// "no se pudo descargar" ese archivo puntual.
+app.use('/uploads', express.static(UPLOADS_DIR, { dotfiles: 'allow' }));
 
 // --- almacenamiento de archivos subidos ---
 const storage = multer.diskStorage({
