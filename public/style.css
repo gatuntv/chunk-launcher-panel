@@ -106,6 +106,7 @@ button[type="submit"]:hover{ background:var(--grey-1); }
   position:fixed; inset:0; background:rgba(0,0,0,.6); backdrop-filter:blur(4px);
   display:flex; align-items:center; justify-content:center; z-index:50;
 }
+.modal-overlay[hidden]{ display:none; }
 .modal-box{
   width:340px; background:#111; border:1px solid var(--line); border-radius:14px;
   padding:22px; display:flex; flex-direction:column; gap:14px;
