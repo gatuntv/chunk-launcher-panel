@@ -39,17 +39,67 @@ const DATA_FILE = path.join(__dirname, 'data', 'instances.json');
 // persistida, en vez de necesitar un segundo volumen aparte.
 const UPLOADS_DIR = path.join(__dirname, 'data', 'uploads');
 
+// Registro de jugadores que iniciaron sesión desde el launcher (para el
+// apartado de baneos por IP) y la lista de IPs baneadas.
+const PLAYERS_FILE = path.join(__dirname, 'data', 'players.json');
+const BANS_FILE = path.join(__dirname, 'data', 'bans.json');
+
 // --- setup inicial de carpetas/archivos ---
 ['icons', 'backgrounds', 'instances', 'mods'].forEach(d =>
   fs.mkdirSync(path.join(UPLOADS_DIR, d), { recursive: true })
 );
 if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, '[]');
+if (!fs.existsSync(PLAYERS_FILE)) fs.writeFileSync(PLAYERS_FILE, '[]');
+if (!fs.existsSync(BANS_FILE)) fs.writeFileSync(BANS_FILE, '{}');
 
 function readInstances() {
   return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
 }
 function writeInstances(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+// El admin puede tipear "2048", "2048M" o "2G" en el panel — lo normalizamos
+// todo al formato que espera minecraft-launcher-core ("2G" / "2048M").
+function normalizeMemory(value, fallback) {
+  if (!value) return fallback;
+  const trimmed = String(value).trim();
+  if (/^\d+[GgMm]$/.test(trimmed)) return trimmed.toUpperCase();
+  if (/^\d+$/.test(trimmed)) return `${trimmed}M`; // número solo = megabytes
+  return fallback;
+}
+
+function readPlayers() {
+  return JSON.parse(fs.readFileSync(PLAYERS_FILE, 'utf-8'));
+}
+function writePlayers(data) {
+  fs.writeFileSync(PLAYERS_FILE, JSON.stringify(data, null, 2));
+}
+function readBans() {
+  return JSON.parse(fs.readFileSync(BANS_FILE, 'utf-8'));
+}
+function writeBans(data) {
+  fs.writeFileSync(BANS_FILE, JSON.stringify(data, null, 2));
+}
+
+// Si ya venció (expiresAt en el pasado), el baneo deja de aplicar solo,
+// sin que un admin tenga que entrar a desbanear a mano.
+function isBanActive(ban) {
+  if (!ban) return false;
+  if (ban.expiresAt === null) return true; // permanente
+  return new Date(ban.expiresAt).getTime() > Date.now();
+}
+
+// req.ip ya viene bien resuelta gracias a 'trust proxy' (más arriba), que
+// hace que Express lea la IP real del jugador desde el header que manda
+// Railway en vez de quedarse con la IP interna del proxy.
+function getClientIp(req) {
+  let ip = req.ip || req.connection?.remoteAddress || '';
+  // Normalizamos IPv4 mapeada sobre IPv6 (::ffff:1.2.3.4 -> 1.2.3.4), que es
+  // como Node suele entregarla y quedaría distinta de la que ve el admin
+  // al banear a mano.
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  return ip;
 }
 
 // Un .mrpack es en realidad un .zip con un "modrinth.index.json" adentro que
@@ -192,11 +242,10 @@ app.post(
     { name: 'mrpack', maxCount: 1 }
   ]),
   (req, res) => {
-    const { name, description, tag } = req.body;
+    const { name, description, tag, memoryMin, memoryMax } = req.body;
     let { version, loader } = req.body;
     const baseUrl = getBaseUrl(req);
     const instanceId = randomUUID();
-
     const icon = req.files.icon?.[0];
     const background = req.files.background?.[0];
     const modFiles = req.files.mods || [];
@@ -237,6 +286,8 @@ app.post(
       loader, // 'vanilla' | 'forge' | 'fabric' | 'quilt'
       iconUrl: icon ? `${baseUrl}/uploads/icons/${icon.filename}` : null,
       backgroundUrl: background ? `${baseUrl}/uploads/backgrounds/${background.filename}` : null,
+      memoryMin: normalizeMemory(memoryMin, '2G'),
+      memoryMax: normalizeMemory(memoryMax, '4G'),
       mods,
       createdAt: new Date().toISOString()
     };
@@ -249,6 +300,79 @@ app.post(
   }
 );
 
+// Edita una instancia existente. Los archivos (ícono/fondo/mods/mrpack) son
+// opcionales: si no se re-suben, se respetan los que ya tenía la instancia.
+app.put(
+  '/api/admin/instances/:id',
+  upload.fields([
+    { name: 'icon', maxCount: 1 },
+    { name: 'background', maxCount: 1 },
+    { name: 'mods', maxCount: 50 },
+    { name: 'mrpack', maxCount: 1 }
+  ]),
+  (req, res) => {
+    const instances = readInstances();
+    const idx = instances.findIndex(i => i.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ success: false, error: 'Instancia no encontrada' });
+
+    const existing = instances[idx];
+    const baseUrl = getBaseUrl(req);
+    const { name, description, tag, memoryMin, memoryMax } = req.body;
+    let { version, loader } = req.body;
+    const icon = req.files.icon?.[0];
+    const background = req.files.background?.[0];
+    const modFiles = req.files.mods || [];
+    const mrpackFile = req.files.mrpack?.[0];
+
+    // "keepMods=false" desde el panel indica que se quiere reemplazar la
+    // lista de mods actual en vez de sumarle los nuevos archivos encima.
+    const keepMods = req.body.keepMods !== 'false';
+    let mods = keepMods ? [...existing.mods] : [];
+
+    if (modFiles.length) {
+      mods = [...mods, ...modFiles.map(f => ({
+        fileName: f.originalname,
+        url: `${baseUrl}/uploads/mods/${f.filename}`,
+        path: `mods/${f.originalname}`
+      }))];
+    }
+
+    if (mrpackFile) {
+      try {
+        const parsed = parseMrpack(fs.readFileSync(mrpackFile.path), existing.id, baseUrl);
+        version = parsed.version || version;
+        loader = parsed.loader || loader;
+        mods = [...mods, ...parsed.mods];
+      } catch (err) {
+        return res.status(400).json({ success: false, error: `Error leyendo el .mrpack: ${err.message}` });
+      } finally {
+        fs.unlinkSync(mrpackFile.path);
+      }
+    }
+
+    const updated = {
+      ...existing,
+      name: name || existing.name,
+      description: description !== undefined ? description : existing.description,
+      tag: tag || existing.tag,
+      titleHtml: name || existing.titleHtml,
+      version: version || existing.version,
+      loader: loader || existing.loader,
+      iconUrl: icon ? `${baseUrl}/uploads/icons/${icon.filename}` : existing.iconUrl,
+      backgroundUrl: background ? `${baseUrl}/uploads/backgrounds/${background.filename}` : existing.backgroundUrl,
+      memoryMin: normalizeMemory(memoryMin, existing.memoryMin || '2G'),
+      memoryMax: normalizeMemory(memoryMax, existing.memoryMax || '4G'),
+      mods,
+      updatedAt: new Date().toISOString()
+    };
+
+    instances[idx] = updated;
+    writeInstances(instances);
+
+    res.json({ success: true, instance: updated });
+  }
+);
+
 app.delete('/api/admin/instances/:id', (req, res) => {
   const instances = readInstances().filter(i => i.id !== req.params.id);
   writeInstances(instances);
@@ -256,6 +380,112 @@ app.delete('/api/admin/instances/:id', (req, res) => {
   const instanceFilesDir = path.join(UPLOADS_DIR, 'instances', req.params.id);
   fs.rm(instanceFilesDir, { recursive: true, force: true }, () => {});
 
+  res.json({ success: true });
+});
+
+// ---------------------------------------------------------------------
+// JUGADORES Y BANEOS POR IP
+// ---------------------------------------------------------------------
+// El launcher llama esto justo después de loguearse (con Microsoft o
+// "cracked") y en cada arranque con sesión guardada. Usamos la IP que ve
+// el propio servidor (no una que mande el cliente) para que no se pueda
+// falsear con solo cambiar lo que el launcher envía.
+app.post('/api/players/checkin', (req, res) => {
+  const { uuid, username, type } = req.body || {};
+  if (!uuid || !username) {
+    return res.status(400).json({ success: false, error: 'Falta uuid o username' });
+  }
+  const ip = getClientIp(req);
+
+  const players = readPlayers();
+  const now = new Date().toISOString();
+  const existingIdx = players.findIndex(p => p.uuid === uuid && p.ip === ip);
+  if (existingIdx !== -1) {
+    players[existingIdx].username = username;
+    players[existingIdx].type = type || players[existingIdx].type;
+    players[existingIdx].lastSeen = now;
+  } else {
+    players.push({ uuid, username, type: type || 'unknown', ip, firstSeen: now, lastSeen: now });
+  }
+  // No dejamos crecer el log para siempre.
+  writePlayers(players.slice(-2000));
+
+  const bans = readBans();
+  const ban = bans[ip];
+  if (isBanActive(ban)) {
+    return res.json({
+      banned: true,
+      reason: ban.reason || '',
+      expiresAt: ban.expiresAt,
+      permanent: ban.expiresAt === null
+    });
+  }
+
+  // Si el baneo ya venció, lo limpiamos para que el admin no lo vea como
+  // "activo" en el panel sin serlo.
+  if (ban && !isBanActive(ban)) {
+    delete bans[ip];
+    writeBans(bans);
+  }
+
+  res.json({ banned: false });
+});
+
+// Lista de jugadores agrupados por IP (para el panel: "quién entró y con
+// qué usuario"), con el estado de baneo de cada IP.
+app.get('/api/admin/players', (req, res) => {
+  const players = readPlayers();
+  const bans = readBans();
+
+  const byIp = new Map();
+  for (const p of players) {
+    if (!byIp.has(p.ip)) byIp.set(p.ip, { ip: p.ip, usernames: [], lastSeen: p.lastSeen });
+    const entry = byIp.get(p.ip);
+    if (!entry.usernames.find(u => u.uuid === p.uuid)) {
+      entry.usernames.push({ uuid: p.uuid, username: p.username, type: p.type });
+    } else {
+      const u = entry.usernames.find(u => u.uuid === p.uuid);
+      u.username = p.username;
+    }
+    if (new Date(p.lastSeen) > new Date(entry.lastSeen)) entry.lastSeen = p.lastSeen;
+  }
+
+  const result = [...byIp.values()].map(entry => {
+    const ban = bans[entry.ip];
+    return {
+      ...entry,
+      banned: isBanActive(ban),
+      banReason: ban?.reason || null,
+      banExpiresAt: ban?.expiresAt ?? null,
+      bannedAt: ban?.bannedAt || null
+    };
+  }).sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
+
+  res.json(result);
+});
+
+app.post('/api/admin/bans', (req, res) => {
+  const { ip, days, reason } = req.body || {};
+  if (!ip) return res.status(400).json({ success: false, error: 'Falta la IP' });
+
+  const bans = readBans();
+  const numDays = Number(days);
+  const permanent = !numDays || numDays <= 0;
+
+  bans[ip] = {
+    reason: reason || 'Incumplimiento de las reglas del servidor',
+    bannedAt: new Date().toISOString(),
+    expiresAt: permanent ? null : new Date(Date.now() + numDays * 24 * 60 * 60 * 1000).toISOString()
+  };
+  writeBans(bans);
+
+  res.json({ success: true, ban: bans[ip] });
+});
+
+app.delete('/api/admin/bans/:ip', (req, res) => {
+  const bans = readBans();
+  delete bans[req.params.ip];
+  writeBans(bans);
   res.json({ success: true });
 });
 

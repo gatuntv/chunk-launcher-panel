@@ -13,8 +13,9 @@
 
   <main class="layout">
     <section class="form-card">
-      <h2>Nueva instancia</h2>
+      <h2 id="formTitle">Nueva instancia</h2>
       <form id="instanceForm">
+        <input type="hidden" name="instanceId" id="instanceIdInput" value="" />
         <label>Nombre
           <input type="text" name="name" required placeholder="Eufonia Club" />
         </label>
@@ -58,7 +59,25 @@
           <input type="file" name="mods" accept=".jar" multiple />
         </label>
 
-        <button type="submit">Publicar instancia</button>
+        <div class="row">
+          <label>RAM mínima
+            <input type="text" name="memoryMin" id="memoryMinInput" placeholder="2G" />
+          </label>
+          <label>RAM máxima
+            <input type="text" name="memoryMax" id="memoryMaxInput" placeholder="4G" />
+          </label>
+        </div>
+        <p class="hint">Formato: "2G" (gigas) o "2048M" (megas). Si los dejás vacíos, se usa 2G / 4G por defecto. Conviene no dejarlos muy separados: si el juego tiene que crecer mucho de golpe también puede trabarse un instante.</p>
+
+        <label class="checkbox-label" id="keepModsWrap" hidden>
+          <input type="checkbox" name="keepMods" id="keepModsInput" checked />
+          Conservar los mods que ya tiene la instancia (los nuevos se suman)
+        </label>
+
+        <div class="row">
+          <button type="submit" id="submitInstanceBtn">Publicar instancia</button>
+          <button type="button" id="cancelEditBtn" class="secondary-btn" hidden>Cancelar edición</button>
+        </div>
       </form>
     </section>
 
@@ -66,7 +85,30 @@
       <h2>Instancias publicadas</h2>
       <div id="instanceGrid" class="instance-grid"></div>
     </section>
+
+    <section class="list-card players-card">
+      <h2>Jugadores y baneos por IP</h2>
+      <p class="hint">Cada vez que alguien entra al launcher (con Microsoft o cracked) queda registrado acá junto a su IP. Podés banear esa IP por una cantidad de días o de forma permanente.</p>
+      <div id="playersTableWrap"></div>
+    </section>
   </main>
+
+  <!-- Modal para banear una IP -->
+  <div class="modal-overlay" id="banOverlay" hidden>
+    <div class="modal-box">
+      <h3 id="banModalTitle">Banear IP</h3>
+      <label>Motivo del baneo
+        <textarea id="banReasonInput" rows="3" placeholder="Ej: uso de hacks / lenguaje ofensivo"></textarea>
+      </label>
+      <label>Duración (días) — dejá vacío o 0 para permanente
+        <input type="number" id="banDaysInput" min="0" placeholder="0 = permanente" />
+      </label>
+      <div class="modal-actions">
+        <button class="modal-btn ghost" id="banCancelBtn">Cancelar</button>
+        <button class="modal-btn solid" id="banAcceptBtn">Banear</button>
+      </div>
+    </div>
+  </div>
 
   <script src="admin.js"></script>
 </body>

@@ -56,3 +56,69 @@ button[type="submit"]:hover{ background:var(--grey-1); }
   border:1px solid var(--line); color:var(--grey-1); border-radius:6px; cursor:pointer;
 }
 .instance-card .delete-btn:hover{ border-color:#fff; color:#fff; }
+.instance-card .actions-row{ display:flex; gap:8px; margin-top:10px; }
+.instance-card .actions-row button{
+  flex:1; padding:8px; background:transparent;
+  border:1px solid var(--line); color:var(--grey-1); border-radius:6px; cursor:pointer; font-size:12px;
+}
+.instance-card .edit-btn:hover{ border-color:#fff; color:#fff; }
+.instance-card .delete-btn{ margin-top:0; }
+
+.checkbox-label{ flex-direction:row !important; align-items:center; gap:8px !important; font-size:12px; }
+.checkbox-label input{ width:auto; padding:0; }
+
+.secondary-btn{
+  margin-top:6px; padding:12px; border:1px solid var(--line); border-radius:8px;
+  background:transparent; color:var(--grey-1); font-weight:600; cursor:pointer;
+}
+.secondary-btn:hover{ border-color:#fff; color:#fff; }
+.row button[type="submit"]{ flex:1; }
+
+.layout{ grid-template-columns:380px 1fr; }
+.players-card{ grid-column:2; }
+
+.players-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+.players-table th{
+  text-align:left; padding:8px 10px; color:var(--grey-2); font-weight:600;
+  border-bottom:1px solid var(--line); font-size:11px; letter-spacing:.4px; text-transform:uppercase;
+}
+.players-table td{ padding:10px; border-bottom:1px solid var(--line); vertical-align:top; }
+.players-table tr:last-child td{ border-bottom:none; }
+.username-pill{
+  display:inline-block; padding:2px 8px; margin:2px 4px 2px 0; border-radius:20px;
+  background:#111; border:1px solid var(--line); font-size:11.5px;
+}
+.username-pill .type-tag{ color:var(--grey-3); margin-left:4px; }
+.ip-cell{ font-family:monospace; color:var(--grey-1); }
+.status-pill{ padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:.3px; }
+.status-pill.ok{ background:rgba(120,220,150,.12); border:1px solid rgba(120,220,150,.4); color:#8ee6a8; }
+.status-pill.banned{ background:rgba(224,102,102,.12); border:1px solid rgba(224,102,102,.4); color:#e06666; }
+.ban-reason{ font-size:11px; color:var(--grey-3); margin-top:4px; max-width:220px; }
+.player-actions button{
+  padding:7px 12px; border-radius:6px; border:1px solid var(--line);
+  background:transparent; color:var(--grey-1); cursor:pointer; font-size:12px;
+}
+.player-actions button.ban-btn:hover{ border-color:#e06666; color:#e06666; }
+.player-actions button.unban-btn:hover{ border-color:#8ee6a8; color:#8ee6a8; }
+.empty-hint{ color:var(--grey-3); font-size:12.5px; padding:10px 0; }
+
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(0,0,0,.6); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center; z-index:50;
+}
+.modal-box{
+  width:340px; background:#111; border:1px solid var(--line); border-radius:14px;
+  padding:22px; display:flex; flex-direction:column; gap:14px;
+}
+.modal-box h3{ margin:0; font-size:15px; }
+.modal-box label{ display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--grey-2); }
+.modal-box textarea, .modal-box input{
+  background:#0a0a0a; border:1px solid var(--line); border-radius:8px;
+  padding:9px; color:var(--white); font-size:13px; font-family:inherit;
+}
+.modal-actions{ display:flex; gap:10px; justify-content:flex-end; }
+.modal-btn{ padding:9px 16px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; }
+.modal-btn.ghost{ background:transparent; border:1px solid var(--line); color:var(--grey-1); }
+.modal-btn.ghost:hover{ border-color:#fff; color:#fff; }
+.modal-btn.solid{ background:#e06666; border:1px solid #e06666; color:#fff; }
+.modal-btn.solid:hover{ background:#c94f4f; }
