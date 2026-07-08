@@ -59,6 +59,17 @@ function writeInstances(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
+// Código corto para instancias privadas (sin caracteres que se confunden
+// entre sí como O/0 o I/1/l), del estilo "K7XQ2M".
+function generateInstanceCode(existingInstances) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code;
+  do {
+    code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  } while (existingInstances.some(i => i.code === code));
+  return code;
+}
+
 // El admin puede tipear "2048", "2048M" o "2G" en el panel — lo normalizamos
 // todo al formato que espera minecraft-launcher-core ("2G" / "2048M").
 function normalizeMemory(value, fallback) {
@@ -225,7 +236,19 @@ const upload = multer({ storage });
 // API que consume el LAUNCHER (lista pública de instancias)
 // ---------------------------------------------------------------------
 app.get('/api/instances', (req, res) => {
-  res.json(readInstances());
+  // Las instancias privadas (por código) no se listan acá: solo aparecen
+  // en el launcher de quien tenga el código, vía /api/instances/by-code.
+  res.json(readInstances().filter(i => i.visibility !== 'private'));
+});
+
+// El launcher llama esto cuando el usuario pone un código en "Agregar
+// instancia por código". Sin el código exacto no hay forma de enterarse
+// de que esta instancia existe (no sale en ningún listado público).
+app.get('/api/instances/by-code/:code', (req, res) => {
+  const code = (req.params.code || '').trim().toUpperCase();
+  const instance = readInstances().find(i => i.visibility === 'private' && i.code === code);
+  if (!instance) return res.status(404).json({ success: false, error: 'Código inválido o instancia no encontrada' });
+  res.json({ success: true, instance });
 });
 
 // ---------------------------------------------------------------------
@@ -250,6 +273,7 @@ app.post(
     const background = req.files.background?.[0];
     const modFiles = req.files.mods || [];
     const mrpackFile = req.files.mrpack?.[0];
+    const visibility = req.body.visibility === 'private' ? 'private' : 'public';
 
     let mods = modFiles.map(f => ({
       fileName: f.originalname,
@@ -276,6 +300,8 @@ app.post(
       return res.status(400).json({ success: false, error: 'Falta versión o loader (o subí un .mrpack que los traiga)' });
     }
 
+    const instances = readInstances();
+
     const instance = {
       id: instanceId,
       name,
@@ -289,10 +315,11 @@ app.post(
       memoryMin: normalizeMemory(memoryMin, '2G'),
       memoryMax: normalizeMemory(memoryMax, '4G'),
       mods,
+      visibility,
+      code: visibility === 'private' ? generateInstanceCode(instances) : null,
       createdAt: new Date().toISOString()
     };
 
-    const instances = readInstances();
     instances.push(instance);
     writeInstances(instances);
 
@@ -365,6 +392,23 @@ app.put(
       mods,
       updatedAt: new Date().toISOString()
     };
+
+    // Visibilidad: si el campo no viene en el request (ej. lo llama otra
+    // integración vieja), respetamos lo que ya tenía. Si pasa de pública a
+    // privada le generamos un código nuevo; si ya era privada, conserva el
+    // mismo código de siempre (para no romper los links/códigos ya
+    // compartidos). Si pasa a pública, le sacamos el código.
+    if (req.body.visibility !== undefined) {
+      const newVisibility = req.body.visibility === 'private' ? 'private' : 'public';
+      updated.visibility = newVisibility;
+      if (newVisibility === 'private') {
+        updated.code = existing.visibility === 'private' && existing.code
+          ? existing.code
+          : generateInstanceCode(instances.filter((_, i) => i !== idx));
+      } else {
+        updated.code = null;
+      }
+    }
 
     instances[idx] = updated;
     writeInstances(instances);

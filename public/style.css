@@ -49,6 +49,11 @@ button[type="submit"]:hover{ background:var(--grey-1); }
 }
 .instance-card .body{ padding:12px; }
 .instance-card h3{ margin:0 0 4px; font-size:14px; }
+.instance-card .private-badge{
+  display:inline-block; font-size:11px; color:#f0c674;
+  background:rgba(240,198,116,.12); border:1px solid rgba(240,198,116,.4);
+  border-radius:6px; padding:3px 8px; margin-bottom:6px;
+}
 .instance-card p{ margin:0; font-size:12px; color:var(--grey-2); }
 .instance-card .meta{ display:flex; gap:8px; margin-top:8px; font-size:11px; color:var(--grey-3); }
 .instance-card .delete-btn{

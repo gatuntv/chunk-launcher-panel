@@ -12,6 +12,16 @@ const keepModsInput = document.getElementById('keepModsInput');
 const iconInput = form.querySelector('input[name="icon"]');
 const memoryMinInput = document.getElementById('memoryMinInput');
 const memoryMaxInput = document.getElementById('memoryMaxInput');
+const visibilityInput = document.getElementById('visibilityInput');
+const visibilityHint = document.getElementById('visibilityHint');
+
+function updateVisibilityHint() {
+  visibilityHint.textContent = visibilityInput.value === 'private'
+    ? 'Se genera un código (ej: K7XQ2M) que tenés que compartir vos mismo. Nadie la ve si no lo tiene.'
+    : 'Aparece para todos en el launcher, sin necesidad de código.';
+}
+visibilityInput.addEventListener('change', updateVisibilityHint);
+updateVisibilityHint();
 
 let currentInstances = [];
 
@@ -44,6 +54,8 @@ function enterEditMode(inst) {
   loaderInput.value = inst.loader || 'vanilla';
   memoryMinInput.value = inst.memoryMin || '';
   memoryMaxInput.value = inst.memoryMax || '';
+  visibilityInput.value = inst.visibility === 'private' ? 'private' : 'public';
+  updateVisibilityHint();
 
   // Editar no obliga a resubir ícono ni versión (ya existen en la instancia).
   iconInput.required = false;
@@ -64,6 +76,8 @@ function exitEditMode() {
   form.reset();
   versionInput.disabled = false;
   loaderInput.disabled = false;
+  visibilityInput.value = 'public';
+  updateVisibilityHint();
 }
 
 cancelEditBtn.addEventListener('click', exitEditMode);
@@ -83,10 +97,14 @@ async function loadInstances() {
 
     const card = document.createElement('div');
     card.className = 'instance-card';
+    const visibilityBadge = inst.visibility === 'private'
+      ? `<div class="private-badge">🔒 Privada · código <strong>${inst.code}</strong></div>`
+      : '';
     card.innerHTML = `
       <img class="thumb" src="${inst.backgroundUrl || inst.iconUrl || ''}" alt="${inst.name}" />
       <div class="body">
         <h3>${inst.name}</h3>
+        ${visibilityBadge}
         <p>${inst.description || ''}</p>
         <div class="meta">
           <span>${inst.version}</span>
